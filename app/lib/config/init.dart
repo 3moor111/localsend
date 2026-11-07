@@ -93,6 +93,10 @@ Future<RefenaContainer> preInit(List<String> args) async {
     await enableContextMenu();
   }
 
+  if (!persistenceService.isPortableMode()) {
+    await refreshContextMenu();
+  }
+
   await initI18n();
 
   TransferNotification.init(notificationStrings);

@@ -94,6 +94,11 @@ Source: "{#PayloadDir}\{#MyAppMsixHelper}"; DestDir: "{app}"; Flags: ignoreversi
 #endif
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
+[Registry]
+; Right-click "Send with LocalSend" entry is created by the app itself; remove it on uninstall
+Root: HKCU; Subkey: "Software\Classes\*\shell\LocalSend"; Flags: uninsdeletekey dontcreatekey
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\LocalSend"; Flags: uninsdeletekey dontcreatekey
+
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}";
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
