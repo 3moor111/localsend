@@ -27,6 +27,7 @@ import 'package:localsend_app/provider/tv_provider.dart';
 import 'package:localsend_app/provider/version_provider.dart';
 import 'package:localsend_app/provider/window_dimensions_provider.dart';
 import 'package:localsend_app/util/i18n.dart';
+import 'package:localsend_app/util/native/app_updater.dart';
 import 'package:localsend_app/util/native/autostart_helper.dart';
 import 'package:localsend_app/util/native/cache_helper.dart';
 import 'package:localsend_app/util/native/channel/android_channel.dart';
@@ -36,6 +37,7 @@ import 'package:localsend_app/util/native/device_info_helper.dart';
 import 'package:localsend_app/util/native/macos_channel.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
 import 'package:localsend_app/util/native/tray_helper.dart';
+import 'package:localsend_app/util/native/windows_notifications.dart';
 import 'package:localsend_app/util/notification_strings.dart';
 import 'package:localsend_app/util/ui/dynamic_colors.dart';
 import 'package:localsend_app/util/ui/snackbar.dart';
@@ -95,6 +97,15 @@ Future<RefenaContainer> preInit(List<String> args) async {
 
   if (!persistenceService.isPortableMode()) {
     await refreshContextMenu();
+
+    // Start with Windows (hidden in the tray) and keep running in the tray when the window is closed,
+    // so screenshots are detected right after login.
+    // This is done only once: if the user turns these off in the settings, they stay off.
+    if (Platform.isWindows && !persistenceService.getAutoStartDefaultApplied()) {
+      await enableAutoStart(startHidden: true);
+      await persistenceService.setMinimizeToTray(true);
+      await persistenceService.setAutoStartDefaultApplied();
+    }
   }
 
   await initI18n();
@@ -116,6 +127,9 @@ Future<RefenaContainer> preInit(List<String> args) async {
     if (handedOver) {
       exit(0); // Another instance does exist
     }
+
+    await initWindowsNotifications();
+    startAppUpdater();
 
     // initialize tray AFTER i18n has been initialized
     try {

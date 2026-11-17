@@ -7,6 +7,7 @@ import 'package:localsend_app/pages/home_page_controller.dart';
 import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
 import 'package:localsend_app/util/native/cross_file_converters.dart';
 import 'package:localsend_app/util/native/tray_helper.dart';
+import 'package:localsend_app/util/native/windows_notifications.dart';
 import 'package:logging/logging.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 import 'package:routerino/routerino.dart';
@@ -15,8 +16,9 @@ final _logger = Logger('ScreenshotWatcher');
 
 const _imageExtensions = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'};
 
-/// Windows only: watches the Screenshots folder(s) and asks the user
-/// whether a newly taken screenshot should be sent with LocalSend.
+/// Windows only: watches the Screenshots folder(s) and shows a notification
+/// that sends a newly taken screenshot with LocalSend in one click.
+/// Works while the app is hidden in the tray (it starts with Windows by default).
 ///
 /// Covers screenshots that Windows saves as a file:
 /// - Win + PrtScn
@@ -100,7 +102,25 @@ class _ScreenshotWatcherState extends State<ScreenshotWatcher> {
       lastSize = size;
     }
 
-    if (_dialogOpen || !mounted) {
+    if (!mounted) {
+      return;
+    }
+
+    final notified = await showWindowsNotification(
+      title: 'Screenshot captured',
+      body: 'Send it with LocalSend?',
+      actions: ['Send'],
+      onAction: (_) {
+        // ignore: discarded_futures
+        _send(file);
+      },
+    );
+    if (notified) {
+      return;
+    }
+
+    // Fallback if notifications are not available: ask in a dialog.
+    if (_dialogOpen) {
       return;
     }
 
@@ -143,10 +163,20 @@ class _ScreenshotWatcherState extends State<ScreenshotWatcher> {
     );
     _dialogOpen = false;
 
-    if (send != true || !mounted) {
+    if (send != true) {
       return;
     }
+    await _send(file);
+  }
 
+  Future<void> _send(File file) async {
+    if (!mounted) {
+      return;
+    }
+    await showFromTray();
+    if (!mounted) {
+      return;
+    }
     final ref = context.ref;
     await ref
         .redux(selectedSendingFilesProvider)

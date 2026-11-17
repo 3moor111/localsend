@@ -96,6 +96,7 @@ const _createChecksums = 'ls_create_checksums';
 const _verifyChecksums = 'ls_verify_checksums';
 const _advancedSettingsKey = 'ls_advanced_settings';
 const _whatsNewKey = 'ls_whats_new';
+const _autoStartDefaultAppliedKey = 'ls_auto_start_default_applied';
 
 final persistenceProvider = Provider<PersistenceService>((ref) {
   throw Exception('persistenceProvider not initialized');
@@ -410,6 +411,16 @@ class PersistenceService {
 
   Future<void> setVerifyChecksums(bool verifyChecksums) async {
     await _prefs.setBool(_verifyChecksums, verifyChecksums);
+  }
+
+  /// Whether "start with Windows" was already turned on once by default.
+  /// After that, the user's own choice in the settings is kept.
+  bool getAutoStartDefaultApplied() {
+    return _prefs.getBool(_autoStartDefaultAppliedKey) ?? false;
+  }
+
+  Future<void> setAutoStartDefaultApplied() async {
+    await _prefs.setBool(_autoStartDefaultAppliedKey, true);
   }
 
   String getMulticastGroup() {

@@ -1,0 +1,101 @@
+name: Release Windows installer (auto-update)
+
+# Every push to main builds the Windows installer and publishes it as a GitHub release.
+# Installed apps check the latest release and offer to update themselves (app/lib/util/native/app_updater.dart).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "packages/**"
+      - "support/scripts/compile_windows_exe-inno.iss"
+      - "support/build/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/release_windows_auto.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: release-windows-auto
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: "3.41.9"
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Fix long file paths
+        run: git config --system core.longpaths true
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Compute build number
+        id: build
+        shell: bash
+        run: |
+          BUILD=$((GITHUB_RUN_NUMBER + 1000))
+          BASE=$(sed -n 's/^version: \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/p' app/pubspec.yaml)
+          echo "build=$BUILD" >> $GITHUB_OUTPUT
+          echo "version=$BASE.$BUILD" >> $GITHUB_OUTPUT
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: "stable"
+
+      # Required by the CMake install step (app/windows/CMakeLists.txt installs localsend_msix_helper.msix)
+      - name: Build MSIX helper
+        run: |
+          $makepri = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\10.*\x64\makepri.exe' | Select-Object -Last 1
+          & $makepri.FullName new /pr support\build\msix\content /cf support\build\msix\priconfig.xml /mn support\build\msix\content\AppxManifest.xml /of support\build\msix\content\resources.pri /o
+          & 'C:\Program Files (x86)\Windows Kits\10\App Certification Kit\makeappx.exe' pack /o /d support\build\msix\content /nv /p app\windows\localsend_msix_helper.msix
+
+      - name: Dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Compile for Windows
+        working-directory: app
+        run: flutter build windows --dart-define=APP_BUILD=${{ steps.build.outputs.build }}
+
+      - name: Prepare Inno Setup payload
+        run: |
+          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}\inno" | Out-Null
+          Copy-Item -Path "app\build\windows\x64\runner\Release\*" -Destination "${{ runner.temp }}\inno" -Recurse
+          Copy-Item -Path "app\assets\packaging\logo.ico" -Destination "${{ runner.temp }}\inno"
+          Copy-Item -Path "support\build\windows\x64\*" -Destination "${{ runner.temp }}\inno" -Recurse
+          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}\inno-result" | Out-Null
+
+      - name: Set installer version
+        shell: bash
+        run: sed -i 's/^#define MyAppVersion .*/#define MyAppVersion "${{ steps.build.outputs.version }}"/' support/scripts/compile_windows_exe-inno.iss
+
+      # SkipMsixHelper: the helper would be unsigned and Add-AppxPackage rejects unsigned packages
+      - name: Compile installer (unsigned)
+        run: iscc /DSkipSignTool /DSkipMsixHelper "/DPayloadDir=${{ runner.temp }}\inno" "/DResultDir=${{ runner.temp }}\inno-result" support\scripts\compile_windows_exe-inno.iss
+
+      - name: Rename installer
+        run: Rename-Item -Path "${{ runner.temp }}\inno-result\localsend.exe" -NewName "LocalSend-Setup.exe"
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES=$(git log -1 --pretty=format:'%s')
+          gh release create "build-${{ steps.build.outputs.build }}" \
+            "${{ runner.temp }}/inno-result/LocalSend-Setup.exe" \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "LocalSend ${{ steps.build.outputs.version }}" \
+            --notes "$NOTES" \
+            --latest

@@ -98,13 +98,18 @@ Source: "{#PayloadDir}\{#MyAppMsixHelper}"; DestDir: "{app}"; Flags: ignoreversi
 ; Right-click "Send with LocalSend" entry is created by the app itself; remove it on uninstall
 Root: HKCU; Subkey: "Software\Classes\*\shell\LocalSend"; Flags: uninsdeletekey dontcreatekey
 Root: HKCU; Subkey: "Software\Classes\Directory\shell\LocalSend"; Flags: uninsdeletekey dontcreatekey
+; "Start with Windows" entry is created by the app itself; remove it on uninstall
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "LocalSend"; Flags: uninsdeletevalue dontcreatekey
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}";
+; AppUserModelID is required for Windows notifications (see app/lib/util/native/windows_notifications.dart)
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; AppUserModelID: "LocalSend"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+; Automatic updates install silently; start LocalSend again afterwards
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait runasoriginaluser; Check: WizardSilent
 #ifndef SkipMsixHelper
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -Command Add-AppxPackage .\localsend_msix_helper.msix -ExternalLocation $(Get-Location)"; WorkingDir: {app}; Flags: nowait runhidden
 #endif
